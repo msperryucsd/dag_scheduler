@@ -1,0 +1,7 @@
+setup.py
+dag_parallelizer/__init__.py
+dag_parallelizer/utils.py
+parallelizer.egg-info/PKG-INFO
+parallelizer.egg-info/SOURCES.txt
+parallelizer.egg-info/dependency_links.txt
+parallelizer.egg-info/top_level.txt
