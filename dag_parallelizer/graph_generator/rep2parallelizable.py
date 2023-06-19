@@ -74,7 +74,8 @@ def rep2p_node(node):
             node_cost = 1e-6
             # raise ValueError('NEGATIVE COST', node_cost, node_string)
         if node_cost == 0.10:
-            print(node.op, node_string, node_cost)
+            pass
+            # print(node.op, node_string, node_cost)
     else:
         raise KeyError('what is this')
     return node_string, node_type, node_cost
