@@ -107,8 +107,8 @@ class SYNC_POINTS(Algorithm):
             available_operations_temp = []
             for op in available_operations_set:
                 longest_time_ahead = o_sdag.nodes[op]['FWA']
-                # heapq.heappush(available_operations_temp,(longest_time_ahead, op))
-                heapq.heappush(available_operations_temp,(sdag.nodes[op]['cost'], op))
+                heapq.heappush(available_operations_temp,(longest_time_ahead, op))
+                # heapq.heappush(available_operations_temp,(sdag.nodes[op]['cost'], op))
             current_sync_point = sync_schedule[current_sp]
             scheduled_ops = set()
             
@@ -379,13 +379,13 @@ def build_sync_point_class(NUM_RANKS):
                 self.max_length = max(self.interval_length, self.max_length, best_start_time + cost)
                 return best_rank
             else:
-                load_balance_metric = self.compute_load_balance_metric(best_rank, cost)
-                if load_balance_metric < self.min_load_imbalance_cutoff:
-                    print(load_balance_metric, self.min_load_imbalance_cutoff)
-                    return None
-                elif load_balance_metric > self.max_load_balance_cutoff:
-                    self.load_balanced = 1
-                    return best_rank
+                # load_balance_metric = self.compute_load_balance_metric(best_rank, cost)
+                # if load_balance_metric < self.min_load_imbalance_cutoff:
+                #     print(load_balance_metric, self.min_load_imbalance_cutoff)
+                #     return None
+                # elif load_balance_metric > self.max_load_balance_cutoff:
+                #     self.load_balanced = True
+                #     return best_rank
 
                 # self.load_balanced = True
                 # We cannot accept this operation if interval length increases by t0o much
