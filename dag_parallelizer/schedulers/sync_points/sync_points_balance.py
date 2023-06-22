@@ -6,7 +6,7 @@ from dag_parallelizer.schedulers.scheduler_functions import schedule_pt2pt_comm,
 
 from dag_parallelizer.utils import draw
 
-class SYNC_POINTS(Algorithm):
+class SYNC_POINTS_BALANCE(Algorithm):
     
     def schedule(self, ccl_graph):
 
@@ -105,17 +105,36 @@ class SYNC_POINTS(Algorithm):
             # Use heap to get priority for operation ordering
             # Heapify slower than list traversal???...
             available_operations_temp = []
+            current_available = 0
             for op in available_operations_set:
                 longest_time_ahead = o_sdag.nodes[op]['FWA']
                 # heapq.heappush(available_operations_temp,(longest_time_ahead, op))
                 heapq.heappush(available_operations_temp,(sdag.nodes[op]['cost'], op))
+                current_available += 1
             current_sync_point = sync_schedule[current_sp]
             scheduled_ops = set()
             
             # Perform actual scheduling for this sync point
+            iter_sync = 0
             while available_operations_temp:
+                
+                if iter_sync > 0:
+                    last_cost = current_cost
+
                 v_information = heapq.heappop(available_operations_temp) # Get best node to schedule
                 v  = v_information[1] # v is the current node to schedule
+                current_cost = v_information[0]
+                iter_sync += 1
+
+                if current_cost > 1e-2:
+                    print(v, f'({len(available_operations_temp)}/{current_available}) sync point {current_sp}')
+                if iter_sync > 1:
+                    if current_cost > last_cost*10:
+                        if current_cost > 1e-2:
+                            print('sldjkfns', current_cost, last_cost)
+                        continue
+                
+
 
                 # Check if we can fit v into current synchronization point
                 # Conditions: 
@@ -136,6 +155,8 @@ class SYNC_POINTS(Algorithm):
                         rank = v_rank,
                         cost = sdag.nodes[v]['cost'],
                     )
+                    if current_cost > 1e-2:
+                        print('EXPENSIVE OP', v, current_sync_point.id, len(current_sync_point.open_ranks))
 
                     # Logistical stuff
                     scheduled_ops.add(v)
@@ -338,16 +359,17 @@ def build_sync_point_class(NUM_RANKS):
             """
 
             # Predecessors of operation cannot be in the current synchronization point
-            if cost > 1e-3:
-                print('EXPENSIVE OP', cost, self.id, len(self.open_ranks))
+            # if cost > 1e-3:
+            #     print('EXPENSIVE OP', cost, self.id, len(self.open_ranks))
             pred_ranks = set() 
             for pred in o_sdag.predecessors(operation):
-                if pred in self.all_operations and (len(pred_ranks) > 1):
-                    return None
+                # if pred in self.all_operations and (len(pred_ranks) > 1):
+                #     return None
                 
                 for p_var in o_sdag.edges[(pred,operation)]['edge_variables']:
                     # s_var are variables computed from p that feeds into v
                     COMM_COST = sdag.nodes[p_var]['cost']
+                    COMM_COST = 0
                 pred_ranks.add((o_sdag.nodes[pred]['rank'], COMM_COST))
 
                 # if len(pred_ranks) > 1:
@@ -379,6 +401,7 @@ def build_sync_point_class(NUM_RANKS):
                 self.max_length = max(self.interval_length, self.max_length, best_start_time + cost)
                 return best_rank
             else:
+                return None
                 load_balance_metric = self.compute_load_balance_metric(best_rank, cost)
                 if load_balance_metric < self.min_load_imbalance_cutoff:
                     print('LOAD IMBALANCE:', load_balance_metric, cost)
