@@ -27,9 +27,12 @@ def draw(G,label_attribute = None, title = 'SDAG'):
     else:
         nx.draw(G,node_color = color_map, with_labels=True,pos = pos)
     plt.savefig(title)
+    plt.show()
+    # exit(title)
 
 
-def time_parallel(model, comm, numruns = 10, outputs = []):
+def time_parallel(model, comm,algorithm ,numruns = 10, outputs = [], save = None):
+    
     o = outputs
     from mpi4py import MPI
     from time_prediction_v5.time_prediction.predict_time import predict_time
@@ -42,7 +45,7 @@ def time_parallel(model, comm, numruns = 10, outputs = []):
     predict_time(rep)
 
 
-    sim = pcb.Simulator(rep, comm = comm, display_scripts=0, analytics=0)
+    sim = pcb.Simulator(rep, comm = comm, display_scripts=0, analytics=0, algorithm = algorithm)
     # profiler.disable()
     # profiler.dump_stats(f'output_{comm.rank}')
     # exit()
@@ -60,31 +63,39 @@ def time_parallel(model, comm, numruns = 10, outputs = []):
     # profiler.disable()
     # profiler.dump_stats(f'output_{comm.rank}')
     if comm.rank == 0:
-        time_out = time.time() - s
+        time_out = (time.time() - s)/numruns
         print('TIME:', time_out)
         for key in o:
             print(key, sim[key])
 
-        import pickle
-        import os
 
-        filename = 'presults.pkl'
+        if save:
+            import pickle
+            import os
 
-        # Check if the pickle file exists
-        if os.path.exists(filename):
-        # Load the dictionary from the pickle file
-            with open(filename, 'rb') as file:
-                data = pickle.load(file)
-        else:
-            data = {}
+            filename = f'{save}_results.pkl'
+            # Check if the pickle file exists
+            if os.path.exists(filename):
+            # Load the dictionary from the pickle file
+                with open(filename, 'rb') as file:
+                    data = pickle.load(file)
+            else:
+                data = {}
 
-        # Modify the value associated with the key 'i'
-        data[comm.size] = time_out
+            # Modify the value associated with the key 'i'
 
-        # Save the modified dictionary back to the pickle file
-        with open('presults.pkl', 'wb') as file:
-            pickle.dump(data, file)
+            if algorithm not in data:
+                data[algorithm] = {}
 
+            data[algorithm][comm.size] = time_out
+
+            # Save the modified dictionary back to the pickle file
+            with open(f'{filename}', 'wb') as file:
+                pickle.dump(data, file)
+
+    del sim
+    del m
+    del rep
 
 def plot_parallel():
     import pickle

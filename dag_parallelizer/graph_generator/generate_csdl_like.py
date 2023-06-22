@@ -19,7 +19,7 @@ def create_csdl_like_graph(
         load_graph: str = None,
         structure = 'random',
         num_paths:int  = 5,
-        save = True,
+        save = None,
     ):
     if comm.rank == 0:
         n = graph_size
@@ -253,10 +253,11 @@ def create_csdl_like_graph(
 
                 # print(G.nodes[node])
             # save the DiGraph object to a file using pickle
-
+            # print(save)
             if save is not None:
                 with open(f'{save}.pickle', 'wb') as f:
                     pickle.dump(G, f)
+                    print('skjdfns', save, G)
 
     else:
         G =None

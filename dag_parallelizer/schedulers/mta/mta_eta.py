@@ -211,7 +211,7 @@ class MTA_ETA(Algorithm):
             )
 
             # Now let's schedule all pt2pt communications to send outputs of v
-            # to any operations on other ranks that need it!!!!!!!!!!!!!!!!!
+            # to any operations on other ranks that need it
             for s in o_sdag.successors(v):
                 o_sdag.nodes[s]['touches_left_final'] = o_sdag.nodes[s]['touches_left_final'] - 1
                 # s is an operation node
