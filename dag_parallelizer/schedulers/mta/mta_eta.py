@@ -1,7 +1,7 @@
 from dag_parallelizer.schedulers.algorithm import Algorithm
 from dag_parallelizer.graph_generator.sdag_to_op_only_graph import sdag_to_op_only_graph
 
-from dag_parallelizer.schedulers.mta.order_nodes_by_weight_no_sort import order_nodes_by_weight_no_sort
+from dag_parallelizer.schedulers.mta.compute_priorities import compute_furthest_weight_ahead
 from dag_parallelizer.schedulers.scheduler_functions import schedule_pt2pt_comm, schedule_operation
 
 from dag_parallelizer.utils import draw
@@ -20,7 +20,7 @@ class MTA_ETA(Algorithm):
         if self.create_plots:
             draw(o_sdag, title = 'images/OSDAG')
 
-        order_nodes_by_weight_no_sort(o_sdag)
+        compute_furthest_weight_ahead(o_sdag)
 
         # Schedule data structure:
         # schedule = [[], [], [], ... (NUMBER_OF_PARTS times)]

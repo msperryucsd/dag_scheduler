@@ -1,8 +1,6 @@
-from graph_algorithms.build_graphs.SDAG_to_OP_ONLY_GRAPH import sdag_to_op_only_graph, check_coarse_graph
-from graph_algorithms.build_graphs.SDAG import create_csdl_like_graph
-
+from dag_parallelizer.graph_generator.sdag_to_op_only_graph import sdag_to_op_only_graph
+from dag_parallelizer.utils import draw
 # utils
-from graph_algorithms.utils import create_name, draw, name_to_int
 
 # other:
 import pickle
@@ -232,18 +230,15 @@ def contract_to_coarsened_dag(graph):
 
 
 def coarsen_graph(
-        sdag,
+        o_sdag,
         MAX_CLUSTER_WEIGHT_PERCENTAGE,
+        total_weight,
         make_plots = False
     ):
     print('\n')
 
     # operation only graph
-    o_sdag, total_weight = sdag_to_op_only_graph(sdag)
     weight_max_cutoff = MAX_CLUSTER_WEIGHT_PERCENTAGE*total_weight
-    # weight_max_cutoff = None
-    if make_plots:
-        draw(o_sdag, title= 'images/O_SDAG')
 
     # try to apply algorithm from "Acyclic Partitioning of Large Directed Acyclic Graphs"
     # https://epubs.siam.org/doi/abs/10.1137/18M1176865?mobileUi=0 
@@ -264,14 +259,102 @@ def coarsen_graph(
         longest_path_length(o_sdag)
         cluster_dag_to_dag(o_sdag, weight_max_cutoff)
         o_sdag = contract_to_coarsened_dag(o_sdag)
-        if make_plots:
-            draw(o_sdag, title=f'images/contracted_{iter}_O_SDAG')
+        # if make_plots:
+        #     draw(o_sdag, title=f'images/contracted_{iter}_O_SDAG')
         if not nx.is_directed_acyclic_graph(o_sdag):
             print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ NOT DAG @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@')
             raise ValueError('NOT DAG')
 
     # Problem size has been reduced:
     # check reduced graph
-    check_coarse_graph(o_sdag, sdag, total_weight)
-
+    # check_coarse_graph(o_sdag, sdag, total_weight)
+    # weight_max_cutoff = None
+    if make_plots:
+        draw(o_sdag, title= 'images/COARSE_O_SDAG')
     return o_sdag
+
+
+
+def check_coarse_graph(coarse_graph, sdag, total_weight):
+    # Checks:
+    # Basically check for conservation of variables, operations and weights
+    # 1) All intermediate variables should be accounted for:
+    # - - Union({v[clustered_variables]}_{v \in V_cg}, {e[edge_variables]}_{e \in E_cg}) = Variables_g/{leaves[V_g]}
+    # 2) All operations should be accounted for:
+    # - - Union({v[clustered_operiantions]}_{v \in V_cg}) = Operations_g
+    # 3) total operation cost is conserved
+
+    # If these checks do not pass, throw an error:
+    # 1) Intermediate variables:
+    all_intermediate_vars = set()
+    for node in sdag.nodes:
+        if sdag.nodes[node]['type'] == 'variable':
+            if (sdag.in_degree(node) == 0) or (sdag.out_degree(node) == 0):
+                continue
+            all_intermediate_vars.add(node)
+
+    all_o_sdag_vars = set()
+    # Add coarsened edge variables
+    for edge in coarse_graph.edges:
+        edge_object = coarse_graph.edges[edge]            
+        
+        # edge nodes of current edge:
+        for edge_node in edge_object['edge_variables']:
+            all_o_sdag_vars.add(edge_node)
+    # Add clustered edge variables
+    for node in coarse_graph.nodes:
+        node_object = coarse_graph.nodes[node]
+
+        for clustered_var in node_object['clustered_variables']:
+            all_o_sdag_vars.add(clustered_var)
+
+    # Check:
+    diff = all_intermediate_vars.symmetric_difference(all_o_sdag_vars)
+    if len(diff) != 0:
+        print('VARIABLES UNACCOUNTED FOR:')
+        print('DIFF NODES:', diff)
+        print('(CONTRACTED NODES:)', all_o_sdag_vars)
+        print('(IV NODES:)',all_intermediate_vars)
+        raise KeyError('edge nodes not capturing all intermediate variables')
+    
+    # 2) Operations
+    all_operations = set()
+    for node in sdag.nodes:
+        if sdag.nodes[node]['type'] == 'operation':
+            all_operations.add(node)
+    all_o_sdag_ops = set()
+    computed_time_cost = 0
+    # Add clustered edge operations
+    for node in coarse_graph.nodes:
+        node_object = coarse_graph.nodes[node]
+
+        computed_time_cost += node_object['weight']
+
+        for clustered_op in node_object['operation_cluster']:
+            if clustered_op in all_o_sdag_ops:
+                raise KeyError('operation repeated in coarse graph')
+            all_o_sdag_ops.add(clustered_op)
+
+    # Check:
+    diff = all_operations.symmetric_difference(all_o_sdag_ops)
+    if len(diff) != 0:
+        print('VARIABLES UNACCOUNTED FOR:')
+        print('DIFF NODES:', diff)
+        print('(CONTRACTED NODES:)', all_o_sdag_ops)
+        print('(IV NODES:)',all_operations)
+        raise KeyError('edge nodes not capturing all operations')
+    
+    if abs(computed_time_cost - total_weight)/total_weight > 1e-10:
+        raise ValueError(f'Time cost not preserved: computed cost ({computed_time_cost}) != total cost({total_weight})')
+    
+def process_coarse_graph(coarse_graph, o_sdag):
+
+    rename_mapping = {}
+    for node in coarse_graph.nodes:
+        coarse_graph.nodes[node]['cost'] = coarse_graph.nodes[node]['weight']
+        rename_mapping[node] = f'cluster_{node}'
+
+        operation_cluster = coarse_graph.nodes[node]['operation_cluster']
+        coarse_graph.nodes[node]['operation_subgraph'] = o_sdag.subgraph(operation_cluster)
+
+    nx.relabel_nodes(coarse_graph, rename_mapping, copy=False)

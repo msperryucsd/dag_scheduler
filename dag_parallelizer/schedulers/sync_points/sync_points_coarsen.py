@@ -1,26 +1,36 @@
 from dag_parallelizer.schedulers.algorithm import Algorithm
 from dag_parallelizer.graph_generator.sdag_to_op_only_graph import sdag_to_op_only_graph
-
-from dag_parallelizer.schedulers.mta.compute_priorities import compute_furthest_weight_ahead
+from dag_parallelizer.schedulers.mta.compute_priorities import compute_furthest_weight_ahead, compute_shortest_weight_before
+from dag_parallelizer.schedulers.sync_points.coarsening_procedure import coarsen_graph, check_coarse_graph, process_coarse_graph
+from dag_parallelizer.schedulers.sync_points.sync_points import SYNC_BASE
 from dag_parallelizer.schedulers.scheduler_functions import schedule_pt2pt_comm, schedule_operation
-
 from dag_parallelizer.utils import draw
+import networkx as nx
 
-class SYNC_POINTS_BALANCE(Algorithm):
+class SYNC_POINTS_COARSE(SYNC_BASE):
     
     def schedule(self, ccl_graph):
-
         NUM_RANKS = self.NUM_RANKS
         sdag = ccl_graph
         if self.create_plots:
+        # if 1:
             draw(sdag, title = 'images/SDAG')
 
         # Translate standard graph to operation-only graph
-        o_sdag, total_weight = sdag_to_op_only_graph(sdag)
+        oo_sdag, total_weight = sdag_to_op_only_graph(sdag)
+        o_sdag = coarsen_graph(oo_sdag, 0.001, total_weight, make_plots=0)
+        check_coarse_graph(o_sdag, sdag, total_weight)
+        process_coarse_graph(o_sdag, oo_sdag)
+
+        # o_sdag, total_weight = sdag_to_op_only_graph(sdag)
+        # weight_max_cutoff = total_weight/10
+        # cluster_dag_to_dag(o_sdag, weight_max_cutoff)
+        # o_sdag = contract_to_coarsened_dag(o_sdag)
         if self.create_plots:
+        # if :
             draw(o_sdag, title = 'images/OSDAG')
 
-        compute_furthest_weight_ahead(o_sdag)
+        self.compute_priorities(o_sdag)
 
         # Schedule data structure:
         # schedule = [[], [], [], ... (NUMBER_OF_PARTS times)]
@@ -38,34 +48,37 @@ class SYNC_POINTS_BALANCE(Algorithm):
         input_variables = set()
         num_ops = 0
         # Find all available nodes
+
+        for node in o_sdag.nodes:
+            o_sdag.nodes[node]['touches_left'] = o_sdag.in_degree(node)
+            o_sdag.nodes[node]['touches_left_final'] = o_sdag.in_degree(node)
+            o_sdag.nodes[node]['release_time'] = 'NOT_READY'
+            if o_sdag.in_degree(node) == 0:
+                if node not in input_operations:
+                    input_operations.add(node)
+                    longest_time_ahead = o_sdag.nodes[node]['FWA']
+                    available_operations_set.add(node)
+            num_ops += 1
+        # print(available_operations_set)
+        # exit('EXIT')
         for node in sdag.nodes:
             # longest_time_ahead = o_sdag.nodes[node]['FWA']
             # print(longest_time_ahead, node)
-            if sdag.nodes[node]['type'] == 'operation':
-                num_ops += 1
-                o_sdag.nodes[node]['touches_left'] = o_sdag.in_degree(node)
-                o_sdag.nodes[node]['touches_left_final'] = o_sdag.in_degree(node)
-                o_sdag.nodes[node]['release_time'] = 'NOT_READY'
+            # if sdag.nodes[node]['type'] == 'operation':
+            #     num_ops += 1
+                # o_sdag.nodes[node]['touches_left'] = o_sdag.in_degree(node)
+                # o_sdag.nodes[node]['touches_left_final'] = o_sdag.in_degree(node)
+                # o_sdag.nodes[node]['release_time'] = 'NOT_READY'
 
-                if o_sdag.in_degree(node) == 0:
-                    if node not in input_operations:
-                        input_operations.add(node)
-                        longest_time_ahead = o_sdag.nodes[node]['FWA']
-                        # available_operations_set.add((longest_time_ahead, node))
-                        available_operations_set.add(node)
-                        # heapq.heappush(available_operations_set, (longest_time_ahead, node))
+                # if oo_sdag.in_degree(node) == 0:
+                #     if node not in input_operations:
+                #         input_operations.add(node)
+                #         longest_time_ahead = o_sdag.nodes[node]['FWA']
+                #         available_operations_set.add(node)
             
             if sdag.in_degree(node) == 0:
                 # If a input leaf operation has a non-zero rank, we need to send the inputs from rank zero to the appropriate rank
                 input_variables.add(node)
-
-                # Also, initialize the available operations heap
-                # op_nodes = sdag.successors(node)
-                # for op in op_nodes:
-                #     if op not in input_operations:
-                #         input_operations.add(op)
-                #         longest_time_ahead = o_sdag.nodes[op]['FWA']
-                #         heapq.heappush(available_operations_set, (longest_time_ahead, op))
 
             if sdag.out_degree(node) == 0:
                 output_variables.add(node)
@@ -105,36 +118,17 @@ class SYNC_POINTS_BALANCE(Algorithm):
             # Use heap to get priority for operation ordering
             # Heapify slower than list traversal???...
             available_operations_temp = []
-            current_available = 0
             for op in available_operations_set:
                 longest_time_ahead = o_sdag.nodes[op]['FWA']
-                # heapq.heappush(available_operations_temp,(longest_time_ahead, op))
-                heapq.heappush(available_operations_temp,(sdag.nodes[op]['cost'], op))
-                current_available += 1
+                heapq.heappush(available_operations_temp,(longest_time_ahead, op))
+                # heapq.heappush(available_operations_temp,(sdag.nodes[op]['cost'], op))
             current_sync_point = sync_schedule[current_sp]
             scheduled_ops = set()
             
             # Perform actual scheduling for this sync point
-            iter_sync = 0
             while available_operations_temp:
-                
-                if iter_sync > 0:
-                    last_cost = current_cost
-
                 v_information = heapq.heappop(available_operations_temp) # Get best node to schedule
                 v  = v_information[1] # v is the current node to schedule
-                current_cost = v_information[0]
-                iter_sync += 1
-
-                if current_cost > 1e-2:
-                    print(v, f'({len(available_operations_temp)}/{current_available}) sync point {current_sp}')
-                if iter_sync > 1:
-                    if current_cost > last_cost*10:
-                        if current_cost > 1e-2:
-                            print('sldjkfns', current_cost, last_cost)
-                        continue
-                
-
 
                 # Check if we can fit v into current synchronization point
                 # Conditions: 
@@ -144,19 +138,20 @@ class SYNC_POINTS_BALANCE(Algorithm):
                     operation = v,
                     o_sdag = o_sdag,
                     sdag = sdag,
-                    cost = sdag.nodes[v]['cost'],
+                    cost = o_sdag.nodes[v]['cost'],
                 )
 
                 # If successful, add operation
                 if v_rank is not None:
                     # Add operation to schedule!!
-                    current_sync_point.add_operation(
-                        operation = v,
-                        rank = v_rank,
-                        cost = sdag.nodes[v]['cost'],
-                    )
-                    if current_cost > 1e-2:
-                        print('EXPENSIVE OP', v, current_sync_point.id, len(current_sync_point.open_ranks))
+                    # for v_in_cluster in o_sdag.nodes[v]['operation_cluster']:
+                    for v_in_cluster in nx.topological_sort(o_sdag.nodes[v]['operation_subgraph']):
+                        current_sync_point.add_operation(
+                            operation = v_in_cluster,
+                            rank = v_rank,
+                            cost = oo_sdag.nodes[v_in_cluster]['cost'],
+                        )
+                        oo_sdag.nodes[v_in_cluster]['rank'] = v_rank
 
                     # Logistical stuff
                     scheduled_ops.add(v)
@@ -179,16 +174,18 @@ class SYNC_POINTS_BALANCE(Algorithm):
                                 )
 
                     if v_rank != 0:
-                        for p_var in sdag.predecessors(v):
-                            if sdag.in_degree(p_var) == 0:
-                                COMM_COST = sdag.nodes[p_var]['cost']
-                                sync_index = 0
-                                sync_schedule[sync_index].add_communication(
-                                    node = p_var,
-                                    comm_cost = COMM_COST,
-                                    from_rank = 0,
-                                    to_rank = v_rank,
-                                )
+                        for v_in_cluster in o_sdag.nodes[v]['operation_cluster']:
+                            for p_var in sdag.predecessors(v_in_cluster):
+                                # print(p_var)
+                                if sdag.in_degree(p_var) == 0:
+                                    COMM_COST = sdag.nodes[p_var]['cost']
+                                    sync_index = 0
+                                    sync_schedule[sync_index].add_communication(
+                                        node = p_var,
+                                        comm_cost = COMM_COST,
+                                        from_rank = 0,
+                                        to_rank = v_rank,
+                                    )
 
                 # Terminate sync point scheduling early if load balanced potentially?
                 if current_sync_point.load_balanced:
@@ -205,8 +202,8 @@ class SYNC_POINTS_BALANCE(Algorithm):
                         available_operations_set.add(s)
 
             num_operations_added += len(scheduled_ops)
-            # print(f"sync point {current_sp} ({num_operations_added}/{num_ops}) ({len(available_operations_set)})")
-            # print(sync_schedule[-1].schedule)
+            print(f"sync point {current_sp} ({num_operations_added}/{num_ops} clusters) ({len(available_operations_set)})")
+            print(sync_schedule[-1].schedule)
 
             # Finished synced point
             current_sp += 1
@@ -219,7 +216,7 @@ class SYNC_POINTS_BALANCE(Algorithm):
             preds = list(sdag.predecessors(output_var))
             if len(preds) > 0:
                 op = preds[0]
-                op_rank = o_sdag.nodes[op]['rank']
+                op_rank = oo_sdag.nodes[op]['rank']
                 if op_rank != 0:
                     COMM_COST = sdag.nodes[output_var]['cost']
                     sync_schedule[-1].add_communication(
@@ -239,7 +236,7 @@ class SYNC_POINTS_BALANCE(Algorithm):
         
         for sync_point in sync_schedule:
             for operation in sync_point.all_operations_ordered:
-                rank = o_sdag.nodes[operation]['rank']
+                rank = oo_sdag.nodes[operation]['rank']
                 OP_COST = sdag.nodes[operation]['cost']
                 schedule_operation(
                     schedule,
@@ -363,13 +360,12 @@ def build_sync_point_class(NUM_RANKS):
             #     print('EXPENSIVE OP', cost, self.id, len(self.open_ranks))
             pred_ranks = set() 
             for pred in o_sdag.predecessors(operation):
-                # if pred in self.all_operations and (len(pred_ranks) > 1):
-                #     return None
+                if pred in self.all_operations and (len(pred_ranks) > 1):
+                    return None
                 
                 for p_var in o_sdag.edges[(pred,operation)]['edge_variables']:
                     # s_var are variables computed from p that feeds into v
                     COMM_COST = sdag.nodes[p_var]['cost']
-                    COMM_COST = 0
                 pred_ranks.add((o_sdag.nodes[pred]['rank'], COMM_COST))
 
                 # if len(pred_ranks) > 1:
@@ -383,7 +379,7 @@ def build_sync_point_class(NUM_RANKS):
                     if pred_rank[0] == rank:
                         continue
                     communication_costs += pred_rank[1]
-                
+                # print(communication_costs)
                 # Find best rank that minimizes start time
                 if rank == 0:
                     best_rank = 0
@@ -401,15 +397,14 @@ def build_sync_point_class(NUM_RANKS):
                 self.max_length = max(self.interval_length, self.max_length, best_start_time + cost)
                 return best_rank
             else:
-                return None
-                load_balance_metric = self.compute_load_balance_metric(best_rank, cost)
-                if load_balance_metric < self.min_load_imbalance_cutoff:
-                    print('LOAD IMBALANCE:', load_balance_metric, cost)
-                    return None
-                elif load_balance_metric > self.max_load_balance_cutoff:
-                    print('LOAD BALANCED:', load_balance_metric, cost)
-                    self.load_balanced = True
-                    return best_rank
+                # load_balance_metric = self.compute_load_balance_metric(best_rank, cost)
+                # if load_balance_metric < self.min_load_imbalance_cutoff:
+                #     print('LOAD IMBALANCE:', load_balance_metric, cost)
+                #     return None
+                # elif load_balance_metric > self.max_load_balance_cutoff:
+                #     print('LOAD BALANCED:', load_balance_metric, cost)
+                #     self.load_balanced = True
+                #     return best_rank
 
                 # self.load_balanced = True
                 # We cannot accept this operation if interval length increases by t0o much

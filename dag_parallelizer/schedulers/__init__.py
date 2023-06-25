@@ -11,5 +11,6 @@ from dag_parallelizer.schedulers.mta.mtb_eta_arb import MTB_ETA_ARB
 
 from dag_parallelizer.schedulers.sync_points.sync_points import SYNC_POINTS
 from dag_parallelizer.schedulers.sync_points.sync_points_balance import SYNC_POINTS_BALANCE
+from dag_parallelizer.schedulers.sync_points.sync_points_coarsen import SYNC_POINTS_COARSE
 
 # MTA_PT2PT_PRE_RECV

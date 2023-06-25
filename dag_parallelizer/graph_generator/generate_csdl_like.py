@@ -261,6 +261,11 @@ def create_csdl_like_graph(
 
     else:
         G =None
+    
+    if comm.size == 1:
+    
+        print('sldjkfns', G)
+        return G
     G = comm.bcast(G, root = 0)
 
     # create_csdl_like_graph(

@@ -1,7 +1,7 @@
 def name_to_int(node_name):
     return int(node_name[1:])
 
-def code_generator(schedule, rank_graph, VARIABLE_SIZE, RANK, save = 0):
+def code_generator(schedule, rank_graph, VARIABLE_SIZE, RANK, save = 0, sleep = True):
 
     generated_code_string = 'import numpy as np \n'
     generated_code_string = ''
@@ -56,12 +56,20 @@ def code_generator(schedule, rank_graph, VARIABLE_SIZE, RANK, save = 0):
         # If operation node, simply write the operation. No need to worry about send and recieve
             node_object = rank_graph.nodes[node]
             if node_object['type'] == 'operation':
-                op_string = generate_operation(
-                    list(rank_graph.predecessors(node)), 
-                    list(rank_graph.successors(node)), 
-                    node, 
-                    sleep = rank_graph.nodes[node]['time_cost'])
-                generated_code_string += op_string
+
+                if sleep:
+                    op_string = generate_operation(
+                        list(rank_graph.predecessors(node)), 
+                        list(rank_graph.successors(node)), 
+                        node, 
+                        sleep = rank_graph.nodes[node]['time_cost'])
+                    generated_code_string += op_string
+                else:
+                    op_string = generate_operation(
+                        list(rank_graph.predecessors(node)), 
+                        list(rank_graph.successors(node)), 
+                        node, )
+                    generated_code_string += op_string
 
                 num_ops+=1
         # else:
@@ -134,7 +142,7 @@ def generate_operation(inputs, outputs, operation, sleep = None):
         if i == 0:
             string += f"temp = ({input_var})\n"
         else:
-            # string += f"temp = ({input_var})*temp\n"
+            string += f"temp = ({input_var})*temp\n"
             string += f"temp = ({input_var})\n"
     
     # for i in range(1000):
@@ -144,7 +152,7 @@ def generate_operation(inputs, outputs, operation, sleep = None):
         # string+= f"time.sleep(0.0000000001)\n"
         # pass
     else:
-        string+= "time.sleep(0.001)\n"
+        # string+= "time.sleep(0.001)\n"
         for i in range(00):
             # string += f"x = (temp+temp+temp+temp+temp+temp)+(temp+temp+temp+temp+temp+temp+0.01)\n"
             string += f"x = np.sin(temp)/(np.sin(temp)+0.001)\n"
@@ -152,8 +160,8 @@ def generate_operation(inputs, outputs, operation, sleep = None):
             # string += f"x = temp*temp*temp*temp*temp*temp\n"
 
     for i, output_var in enumerate(outputs):
-        # string += f"{output_var} = temp*(1/{i+1})\n"
-        # string += f"{output_var} = temp*(1.0000{i+1})\n"
+        string += f"{output_var} = temp*(1/{i+1})\n"
+        string += f"{output_var} = temp*(1.0000{i+1})\n"
         string += f"{output_var} = temp\n"
 
 

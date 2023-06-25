@@ -113,6 +113,7 @@ def generate_schedule_plot(estimated_times, full_schedule):
             color_ind = colormap[operation_type]['index']%len(color_list)
             colormap[operation_type]['index']+=1
             ax.bar(rank, height, bottom=bottoms[i], color=color_list[color_ind], alpha = alpha)
+        print('rank', rank, len(heights))
 
         # ax.set_ylim(top = 0.17)
         # ax.set_xlim([-0.75, 7.75])

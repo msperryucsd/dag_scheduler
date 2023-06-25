@@ -1,6 +1,6 @@
 class Algorithm():
 
-    def __init__(self) -> None:
+    def __init__(self, **kwargs) -> None:
         self.create_plots = 0
         self.profile = 0
 

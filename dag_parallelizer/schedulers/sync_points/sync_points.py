@@ -1,15 +1,22 @@
 from dag_parallelizer.schedulers.algorithm import Algorithm
 from dag_parallelizer.graph_generator.sdag_to_op_only_graph import sdag_to_op_only_graph
-
-from dag_parallelizer.schedulers.mta.order_nodes_by_weight_no_sort import order_nodes_by_weight_no_sort
+from dag_parallelizer.schedulers.mta.compute_priorities import compute_furthest_weight_ahead, compute_shortest_weight_before
 from dag_parallelizer.schedulers.scheduler_functions import schedule_pt2pt_comm, schedule_operation
-
 from dag_parallelizer.utils import draw
 
-class SYNC_POINTS(Algorithm):
+class SYNC_BASE(Algorithm):
+    def __init__(self, priority = 'furthest ahead') -> None:
+        super().__init__()
+        self.priority = priority
+
+        if self.priority == 'furthest ahead':
+            self.compute_priorities = compute_furthest_weight_ahead
+        elif self.priority == 'shortest before':
+            self.compute_priorities = compute_shortest_weight_before
+
+class SYNC_POINTS(SYNC_BASE):
     
     def schedule(self, ccl_graph):
-
         NUM_RANKS = self.NUM_RANKS
         sdag = ccl_graph
         if self.create_plots:
@@ -20,7 +27,15 @@ class SYNC_POINTS(Algorithm):
         if self.create_plots:
             draw(o_sdag, title = 'images/OSDAG')
 
-        order_nodes_by_weight_no_sort(o_sdag)
+        # with open(f'TEMP.pickle', 'wb') as f:
+        #     import pickle
+        #     pickle.dump(o_sdag, f)
+        # with open(f'TEMP2.pickle', 'wb') as f:
+        #     import pickle
+        #     pickle.dump(sdag, f)
+        # exit()
+        # compute_furthest_weight_ahead(o_sdag)
+        self.compute_priorities(o_sdag)
 
         # Schedule data structure:
         # schedule = [[], [], [], ... (NUMBER_OF_PARTS times)]
@@ -107,8 +122,8 @@ class SYNC_POINTS(Algorithm):
             available_operations_temp = []
             for op in available_operations_set:
                 longest_time_ahead = o_sdag.nodes[op]['FWA']
-                # heapq.heappush(available_operations_temp,(longest_time_ahead, op))
-                heapq.heappush(available_operations_temp,(sdag.nodes[op]['cost'], op))
+                heapq.heappush(available_operations_temp,(longest_time_ahead, op))
+                # heapq.heappush(available_operations_temp,(sdag.nodes[op]['cost'], op))
             current_sync_point = sync_schedule[current_sp]
             scheduled_ops = set()
             
@@ -338,8 +353,8 @@ def build_sync_point_class(NUM_RANKS):
             """
 
             # Predecessors of operation cannot be in the current synchronization point
-            if cost > 1e-3:
-                print('EXPENSIVE OP', cost, self.id, len(self.open_ranks))
+            # if cost > 1e-3:
+            #     print('EXPENSIVE OP', cost, self.id, len(self.open_ranks))
             pred_ranks = set() 
             for pred in o_sdag.predecessors(operation):
                 if pred in self.all_operations and (len(pred_ranks) > 1):
@@ -379,14 +394,14 @@ def build_sync_point_class(NUM_RANKS):
                 self.max_length = max(self.interval_length, self.max_length, best_start_time + cost)
                 return best_rank
             else:
-                load_balance_metric = self.compute_load_balance_metric(best_rank, cost)
-                if load_balance_metric < self.min_load_imbalance_cutoff:
-                    print('LOAD IMBALANCE:', load_balance_metric, cost)
-                    return None
-                elif load_balance_metric > self.max_load_balance_cutoff:
-                    print('LOAD BALANCED:', load_balance_metric, cost)
-                    self.load_balanced = True
-                    return best_rank
+                # load_balance_metric = self.compute_load_balance_metric(best_rank, cost)
+                # if load_balance_metric < self.min_load_imbalance_cutoff:
+                #     print('LOAD IMBALANCE:', load_balance_metric, cost)
+                #     return None
+                # elif load_balance_metric > self.max_load_balance_cutoff:
+                #     print('LOAD BALANCED:', load_balance_metric, cost)
+                #     self.load_balanced = True
+                #     return best_rank
 
                 # self.load_balanced = True
                 # We cannot accept this operation if interval length increases by t0o much

@@ -1,6 +1,6 @@
 import networkx as nx
 
-def order_nodes_by_weight_no_sort(DAG):
+def compute_furthest_weight_ahead(DAG):
     # Initialize a dictionary to keep track of the furthest weight ahead for each node
     furthest_weight_ahead = {}
 
@@ -26,7 +26,7 @@ def order_nodes_by_weight_no_sort(DAG):
 
         DAG.nodes[node]['FWA'] = -furthest_weight_ahead[node]
 
-def order_nodes_by_weight_before(DAG):
+def compute_shortest_weight_before(DAG):
     # Initialize a dictionary to keep track of the furthest weight ahead for each node
     furthest_weight_ahead = {}
 
